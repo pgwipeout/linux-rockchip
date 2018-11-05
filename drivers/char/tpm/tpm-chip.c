@@ -37,7 +37,7 @@ struct class *tpm_class;
 struct class *tpmrm_class;
 dev_t tpm_devt;
 
-static int tpm_request_locality(struct tpm_chip *chip, unsigned int flags)
+static int tpm_request_locality(struct tpm_chip *chip)
 {
 	int rc;
 
@@ -52,7 +52,7 @@ static int tpm_request_locality(struct tpm_chip *chip, unsigned int flags)
 	return 0;
 }
 
-static void tpm_relinquish_locality(struct tpm_chip *chip, unsigned int flags)
+static void tpm_relinquish_locality(struct tpm_chip *chip)
 {
 	int rc;
 
@@ -66,7 +66,7 @@ static void tpm_relinquish_locality(struct tpm_chip *chip, unsigned int flags)
 	chip->locality = -1;
 }
 
-static int tpm_cmd_ready(struct tpm_chip *chip, unsigned int flags)
+static int tpm_cmd_ready(struct tpm_chip *chip)
 {
 	if (!chip->ops->cmd_ready)
 		return 0;
@@ -74,7 +74,7 @@ static int tpm_cmd_ready(struct tpm_chip *chip, unsigned int flags)
 	return chip->ops->cmd_ready(chip);
 }
 
-static int tpm_go_idle(struct tpm_chip *chip, unsigned int flags)
+static int tpm_go_idle(struct tpm_chip *chip)
 {
 	if (!chip->ops->go_idle)
 		return 0;
@@ -85,13 +85,12 @@ static int tpm_go_idle(struct tpm_chip *chip, unsigned int flags)
 /**
  * tpm_chip_start() - power on the TPM
  * @chip:	a TPM chip to use
- * @flags:	TPM transmit flags
  *
  * Return:
  * * The response length	- OK
  * * -errno			- A system error
  */
-int tpm_chip_start(struct tpm_chip *chip, unsigned int flags)
+int tpm_chip_start(struct tpm_chip *chip)
 {
 	int ret;
 
@@ -99,16 +98,16 @@ int tpm_chip_start(struct tpm_chip *chip, unsigned int flags)
 		chip->ops->clk_enable(chip, true);
 
 	if (chip->locality == -1) {
-		ret = tpm_request_locality(chip, flags);
+		ret = tpm_request_locality(chip);
 		if (ret) {
 			chip->ops->clk_enable(chip, false);
 			return ret;
 		}
 	}
 
-	ret = tpm_cmd_ready(chip, flags);
+	ret = tpm_cmd_ready(chip);
 	if (ret) {
-		tpm_relinquish_locality(chip, flags);
+		tpm_relinquish_locality(chip);
 		if (chip->ops->clk_enable)
 			chip->ops->clk_enable(chip, false);
 		return ret;
@@ -120,16 +119,15 @@ int tpm_chip_start(struct tpm_chip *chip, unsigned int flags)
 /**
  * tpm_chip_stop() - power off the TPM
  * @chip:	a TPM chip to use
- * @flags:	TPM transmit flags
  *
  * Return:
  * * The response length	- OK
  * * -errno			- A system error
  */
-void tpm_chip_stop(struct tpm_chip *chip, unsigned int flags)
+void tpm_chip_stop(struct tpm_chip *chip)
 {
-	tpm_go_idle(chip, flags);
-	tpm_relinquish_locality(chip, flags);
+	tpm_go_idle(chip);
+	tpm_relinquish_locality(chip);
 	if (chip->ops->clk_enable)
 		chip->ops->clk_enable(chip, false);
 }
@@ -157,7 +155,7 @@ int tpm_try_get_ops(struct tpm_chip *chip)
 		goto out_ops;
 
 	mutex_lock(&chip->tpm_mutex);
-	rc = tpm_chip_start(chip, 0);
+	rc = tpm_chip_start(chip);
 	if (rc)
 		goto out_lock;
 
@@ -180,7 +178,7 @@ EXPORT_SYMBOL_GPL(tpm_try_get_ops);
  */
 void tpm_put_ops(struct tpm_chip *chip)
 {
-	tpm_chip_stop(chip, 0);
+	tpm_chip_stop(chip);
 	mutex_unlock(&chip->tpm_mutex);
 	up_read(&chip->ops_sem);
 	put_device(&chip->dev);
@@ -558,11 +556,11 @@ int tpm_chip_register(struct tpm_chip *chip)
 {
 	int rc;
 
-	rc = tpm_chip_start(chip, 0);
+	rc = tpm_chip_start(chip);
 	if (rc)
 		return rc;
 	rc = tpm_auto_startup(chip);
-	tpm_chip_stop(chip, 0);
+	tpm_chip_stop(chip);
 	if (rc)
 		return rc;
 

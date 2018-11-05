@@ -62,8 +62,7 @@ unsigned long tpm_calc_ordinal_duration(struct tpm_chip *chip, u32 ordinal)
 }
 EXPORT_SYMBOL_GPL(tpm_calc_ordinal_duration);
 
-static ssize_t tpm_try_transmit(struct tpm_chip *chip, void *buf, size_t bufsiz,
-				unsigned int flags)
+static ssize_t tpm_try_transmit(struct tpm_chip *chip, void *buf, size_t bufsiz)
 {
 	struct tpm_header *header = buf;
 	int rc;
@@ -134,7 +133,6 @@ out_recv:
  * @chip:	a TPM chip to use
  * @buf:	a TPM command buffer
  * @bufsiz:	length of the TPM command buffer
- * @flags:	TPM transmit flags
  *
  * A wrapper around tpm_try_transmit() that handles TPM2_RC_RETRY returns from
  * the TPM and retransmits the command after a delay up to a maximum wait of
@@ -147,8 +145,7 @@ out_recv:
  * * The response length	- OK
  * * -errno			- A system error
  */
-ssize_t tpm_transmit(struct tpm_chip *chip, u8 *buf, size_t bufsiz,
-		     unsigned int flags)
+ssize_t tpm_transmit(struct tpm_chip *chip, u8 *buf, size_t bufsiz)
 {
 	struct tpm_header *header = (struct tpm_header *)buf;
 	/* space for header and handles */
@@ -168,7 +165,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, u8 *buf, size_t bufsiz,
 	memcpy(save, buf, save_size);
 
 	for (;;) {
-		ret = tpm_try_transmit(chip, buf, bufsiz, flags);
+		ret = tpm_try_transmit(chip, buf, bufsiz);
 		if (ret < 0)
 			break;
 		rc = be32_to_cpu(header->return_code);
@@ -201,7 +198,6 @@ ssize_t tpm_transmit(struct tpm_chip *chip, u8 *buf, size_t bufsiz,
  * @chip:			a TPM chip to use
  * @buf:			a TPM command buffer
  * @min_rsp_body_length:	minimum expected length of response body
- * @flags:			TPM transmit flags
  * @desc:			command description used in the error message
  *
  * Return:
@@ -210,14 +206,13 @@ ssize_t tpm_transmit(struct tpm_chip *chip, u8 *buf, size_t bufsiz,
  * * TPM_RC	- A TPM error
  */
 ssize_t tpm_transmit_cmd(struct tpm_chip *chip, struct tpm_buf *buf,
-			 size_t min_rsp_body_length, unsigned int flags,
-			 const char *desc)
+			 size_t min_rsp_body_length, const char *desc)
 {
 	const struct tpm_header *header = (struct tpm_header *)buf->data;
 	int err;
 	ssize_t len;
 
-	len = tpm_transmit(chip, buf->data, PAGE_SIZE, flags);
+	len = tpm_transmit(chip, buf->data, PAGE_SIZE);
 	if (len <  0)
 		return len;
 
@@ -366,8 +361,7 @@ int tpm_send(struct tpm_chip *chip, void *cmd, size_t buflen)
 		goto out;
 
 	memcpy(buf.data, cmd, buflen);
-	rc = tpm_transmit_cmd(chip, &buf, 0, 0,
-			      "attempting to a send a command");
+	rc = tpm_transmit_cmd(chip, &buf, 0, "attempting to a send a command");
 	tpm_buf_destroy(&buf);
 out:
 	tpm_put_ops(chip);
