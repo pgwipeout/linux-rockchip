@@ -151,9 +151,11 @@
 	;
 	; Now manually save the complete reg file
 
-	PUSH	r9		; freeup a register: slot of erstatus
+	st.as	r9, [sp, -12]	; freeup r9, save in the right stack slot
 
+	PUSHAX	erstatus
 	PUSHAX	eret
+
 	sub	sp, sp, 12	; skip JLI, LDI, EI
 	PUSH	lp_count
 	PUSHAX	lp_start
@@ -162,13 +164,8 @@
 
 	PUSH	r11
 	PUSH	r10
-
-	ld.as	r9,  [sp, 10]	; load stashed r9 (status32 stack slot)
-	lr	r10, [erstatus]
-	st.as	r10, [sp, 10]	; save status32 at it's right stack slot
-
-	PUSH	r9
-	PUSH	r8
+	; skip r9, saved already
+	st.a	r8, [sp, -8]
 	PUSH	r7
 	PUSH	r6
 	PUSH	r5
