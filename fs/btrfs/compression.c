@@ -730,6 +730,28 @@ struct heuristic_ws {
 	struct list_head list;
 };
 
+static struct workspace_manager heuristic_wsm;
+
+static void heuristic_init_workspace_manager(void)
+{
+	btrfs_init_workspace_manager(&heuristic_wsm, &btrfs_heuristic_compress);
+}
+
+static void heuristic_cleanup_workspace_manager(void)
+{
+	btrfs_cleanup_workspace_manager(&heuristic_wsm);
+}
+
+static struct list_head *heuristic_get_workspace(void)
+{
+	return btrfs_get_workspace(&heuristic_wsm);
+}
+
+static void heuristic_put_workspace(struct list_head *ws)
+{
+	btrfs_put_workspace(&heuristic_wsm, ws);
+}
+
 static void free_heuristic_ws(struct list_head *ws)
 {
 	struct heuristic_ws *workspace;
@@ -770,23 +792,13 @@ fail:
 }
 
 const struct btrfs_compress_op btrfs_heuristic_compress = {
+	.init_workspace_manager = heuristic_init_workspace_manager,
+	.cleanup_workspace_manager = heuristic_cleanup_workspace_manager,
+	.get_workspace = heuristic_get_workspace,
+	.put_workspace = heuristic_put_workspace,
 	.alloc_workspace = alloc_heuristic_ws,
 	.free_workspace = free_heuristic_ws,
 };
-
-struct workspace_manager {
-	const struct btrfs_compress_op *ops;
-	struct list_head idle_ws;
-	spinlock_t ws_lock;
-	/* Number of free workspaces */
-	int free_ws;
-	/* Total number of allocated workspaces */
-	atomic_t total_ws;
-	/* Waiters for a free workspace */
-	wait_queue_head_t ws_wait;
-};
-
-static struct workspace_manager wsm[BTRFS_NR_WORKSPACE_MANAGERS];
 
 static const struct btrfs_compress_op * const btrfs_compress_op[] = {
 	&btrfs_heuristic_compress,
@@ -795,33 +807,33 @@ static const struct btrfs_compress_op * const btrfs_compress_op[] = {
 	&btrfs_zstd_compress,
 };
 
-static void btrfs_init_workspace_manager(int type)
+void btrfs_init_workspace_manager(struct workspace_manager *wsm,
+				  const struct btrfs_compress_op *ops)
 {
-	struct workspace_manager *wsman = &wsm[type];
 	struct list_head *workspace;
 
-	wsman->ops = btrfs_compress_op[type];
+	wsm->ops = ops;
 
-	INIT_LIST_HEAD(&wsman->idle_ws);
-	spin_lock_init(&wsman->ws_lock);
-	atomic_set(&wsman->total_ws, 0);
-	init_waitqueue_head(&wsman->ws_wait);
+	INIT_LIST_HEAD(&wsm->idle_ws);
+	spin_lock_init(&wsm->ws_lock);
+	atomic_set(&wsm->total_ws, 0);
+	init_waitqueue_head(&wsm->ws_wait);
 
 	/*
 	 * Preallocate one workspace for each compression type so
 	 * we can guarantee forward progress in the worst case
 	 */
-	workspace = wsman->ops->alloc_workspace();
+	workspace = wsm->ops->alloc_workspace();
 	if (IS_ERR(workspace)) {
 		pr_warn("BTRFS: cannot preallocate compression workspace, will try later\n");
 	} else {
-		atomic_set(&wsman->total_ws, 1);
-		wsman->free_ws = 1;
-		list_add(workspace, &wsman->idle_ws);
+		atomic_set(&wsm->total_ws, 1);
+		wsm->free_ws = 1;
+		list_add(workspace, &wsm->idle_ws);
 	}
 }
 
-static void btrfs_cleanup_workspace_manager(struct workspace_manager *wsman)
+void btrfs_cleanup_workspace_manager(struct workspace_manager *wsman)
 {
 	struct list_head *ws;
 
@@ -839,7 +851,7 @@ static void btrfs_cleanup_workspace_manager(struct workspace_manager *wsman)
  * Preallocation makes a forward progress guarantees and we do not return
  * errors.
  */
-static struct list_head *btrfs_get_workspace(struct workspace_manager *wsman)
+struct list_head *btrfs_get_workspace(struct workspace_manager *wsm)
 {
 	struct list_head *workspace;
 	int cpus = num_online_cpus();
@@ -850,11 +862,11 @@ static struct list_head *btrfs_get_workspace(struct workspace_manager *wsman)
 	wait_queue_head_t *ws_wait;
 	int *free_ws;
 
-	idle_ws	 = &wsman->idle_ws;
-	ws_lock	 = &wsman->ws_lock;
-	total_ws = &wsman->total_ws;
-	ws_wait	 = &wsman->ws_wait;
-	free_ws	 = &wsman->free_ws;
+	idle_ws	 = &wsm->idle_ws;
+	ws_lock	 = &wsm->ws_lock;
+	total_ws = &wsm->total_ws;
+	ws_wait	 = &wsm->ws_wait;
+	free_ws	 = &wsm->free_ws;
 
 again:
 	spin_lock(ws_lock);
@@ -885,7 +897,7 @@ again:
 	 * context of btrfs_compress_bio/btrfs_compress_pages
 	 */
 	nofs_flag = memalloc_nofs_save();
-	workspace = wsman->ops->alloc_workspace();
+	workspace = wsm->ops->alloc_workspace();
 	memalloc_nofs_restore(nofs_flag);
 
 	if (IS_ERR(workspace)) {
@@ -918,15 +930,14 @@ again:
 
 static struct list_head *get_workspace(int type)
 {
-	return btrfs_get_workspace(&wsm[type]);
+	return btrfs_compress_op[type]->get_workspace();
 }
 
 /*
  * put a workspace struct back on the list or free it if we have enough
  * idle ones sitting around
  */
-static void btrfs_put_workspace(struct workspace_manager *wsman,
-				struct list_head *ws)
+void btrfs_put_workspace(struct workspace_manager *wsm, struct list_head *ws)
 {
 	struct list_head *idle_ws;
 	spinlock_t *ws_lock;
@@ -934,11 +945,11 @@ static void btrfs_put_workspace(struct workspace_manager *wsman,
 	wait_queue_head_t *ws_wait;
 	int *free_ws;
 
-	idle_ws	 = &wsman->idle_ws;
-	ws_lock	 = &wsman->ws_lock;
-	total_ws = &wsman->total_ws;
-	ws_wait	 = &wsman->ws_wait;
-	free_ws	 = &wsman->free_ws;
+	idle_ws	 = &wsm->idle_ws;
+	ws_lock	 = &wsm->ws_lock;
+	total_ws = &wsm->total_ws;
+	ws_wait	 = &wsm->ws_wait;
+	free_ws	 = &wsm->free_ws;
 
 	spin_lock(ws_lock);
 	if (*free_ws <= num_online_cpus()) {
@@ -949,7 +960,7 @@ static void btrfs_put_workspace(struct workspace_manager *wsman,
 	}
 	spin_unlock(ws_lock);
 
-	wsman->ops->free_workspace(ws);
+	wsm->ops->free_workspace(ws);
 	atomic_dec(total_ws);
 wake:
 	cond_wake_up(ws_wait);
@@ -957,7 +968,7 @@ wake:
 
 static void put_workspace(int type, struct list_head *ws)
 {
-	return btrfs_put_workspace(&wsm[type], ws);
+	return btrfs_compress_op[type]->put_workspace(ws);
 }
 
 /*
@@ -1057,7 +1068,7 @@ void __init btrfs_init_compress(void)
 	int i;
 
 	for (i = 0; i < BTRFS_NR_WORKSPACE_MANAGERS; i++)
-		btrfs_init_workspace_manager(i);
+		btrfs_compress_op[i]->init_workspace_manager();
 }
 
 void __cold btrfs_exit_compress(void)
@@ -1065,7 +1076,7 @@ void __cold btrfs_exit_compress(void)
 	int i;
 
 	for (i = 0; i < BTRFS_NR_WORKSPACE_MANAGERS; i++)
-		btrfs_cleanup_workspace_manager(&wsm[i]);
+		btrfs_compress_op[i]->cleanup_workspace_manager();
 }
 
 /*
