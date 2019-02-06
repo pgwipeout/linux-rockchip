@@ -1515,6 +1515,7 @@
 			clocks = <&gcc GCC_SDCC2_AHB_CLK>,
 				 <&gcc GCC_SDCC2_APPS_CLK>;
 			clock-names = "iface", "core";
+			iommus = <&apps_smmu 0xa0 0xf>;
 
 			status = "disabled";
 		};
@@ -1634,6 +1635,7 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges;
+			dma-ranges;
 
 			clocks = <&gcc GCC_CFG_NOC_USB3_PRIM_AXI_CLK>,
 				 <&gcc GCC_USB30_PRIM_MASTER_CLK>,
@@ -1662,6 +1664,7 @@
 				compatible = "snps,dwc3";
 				reg = <0 0x0a600000 0 0xcd00>;
 				interrupts = <GIC_SPI 133 IRQ_TYPE_LEVEL_HIGH>;
+				iommus = <&apps_smmu 0x740 0>;
 				snps,dis_u2_susphy_quirk;
 				snps,dis_enblslpm_quirk;
 				phys = <&usb_1_hsphy>, <&usb_1_ssphy>;
@@ -1676,6 +1679,7 @@
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges;
+			dma-ranges;
 
 			clocks = <&gcc GCC_CFG_NOC_USB3_SEC_AXI_CLK>,
 				 <&gcc GCC_USB30_SEC_MASTER_CLK>,
@@ -1704,6 +1708,7 @@
 				compatible = "snps,dwc3";
 				reg = <0 0x0a800000 0 0xcd00>;
 				interrupts = <GIC_SPI 138 IRQ_TYPE_LEVEL_HIGH>;
+				iommus = <&apps_smmu 0x760 0>;
 				snps,dis_u2_susphy_quirk;
 				snps,dis_enblslpm_quirk;
 				phys = <&usb_2_hsphy>, <&usb_2_ssphy>;
@@ -2236,6 +2241,8 @@
 			reg = <0 0x18800000 0 0x800000>;
 			reg-names = "membase";
 			memory-region = <&wlan_msa_mem>;
+			clock-names = "cxo_ref_clk_pin";
+			clocks = <&rpmhcc RPMH_RF_CLK2>;
 			interrupts =
 				<GIC_SPI 414 IRQ_TYPE_LEVEL_HIGH>,
 				<GIC_SPI 415 IRQ_TYPE_LEVEL_HIGH>,
@@ -2249,6 +2256,7 @@
 				<GIC_SPI 423 IRQ_TYPE_LEVEL_HIGH>,
 				<GIC_SPI 424 IRQ_TYPE_LEVEL_HIGH>,
 				<GIC_SPI 425 IRQ_TYPE_LEVEL_HIGH>;
+			iommus = <&apps_smmu 0x0040 0x1>;
 		};
 	};
 
