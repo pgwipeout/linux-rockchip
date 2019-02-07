@@ -189,11 +189,11 @@ static int make_exe(const uint8_t *payload, size_t len)
 
 	fd = openat(AT_FDCWD, "/tmp", O_WRONLY|O_EXCL|O_TMPFILE, 0700);
 	if (fd == -1) {
-		return 1;
+		exit(1);
 	}
 
 	if (writev(fd, iov, 3) != sizeof(struct elf64_hdr) + sizeof(struct elf64_phdr) + len) {
-		return 1;
+		exit(1);
 	}
 
 	/* Avoid ETXTBSY on exec. */
