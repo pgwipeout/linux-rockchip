@@ -282,17 +282,16 @@ __reset_isolation_pfn(struct zone *zone, unsigned long pfn, bool check_source,
 	end_page = pfn_to_page(pfn);
 
 	do {
-		if (!pfn_valid_within(pfn))
-			continue;
+		if (pfn_valid_within(pfn)) {
+			if (check_source && PageLRU(page)) {
+				clear_pageblock_skip(page);
+				return true;
+			}
 
-		if (check_source && PageLRU(page)) {
-			clear_pageblock_skip(page);
-			return true;
-		}
-
-		if (check_target && PageBuddy(page)) {
-			clear_pageblock_skip(page);
-			return true;
+			if (check_target && PageBuddy(page)) {
+				clear_pageblock_skip(page);
+				return true;
+			}
 		}
 
 		page += (1 << PAGE_ALLOC_COSTLY_ORDER);
