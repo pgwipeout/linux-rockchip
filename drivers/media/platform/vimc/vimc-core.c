@@ -24,7 +24,6 @@
 
 #include "vimc-common.h"
 
-#define VIMC_PDEV_NAME "vimc"
 #define VIMC_MDEV_MODEL_NAME "VIMC MDEV"
 
 #define VIMC_ENT_LINK(src, srcpad, sink, sinkpad, link_flags) {	\
@@ -319,6 +318,8 @@ static int vimc_probe(struct platform_device *pdev)
 	/* Initialize media device */
 	strscpy(vimc->mdev.model, VIMC_MDEV_MODEL_NAME,
 		sizeof(vimc->mdev.model));
+	snprintf(vimc->mdev.bus_info, sizeof(vimc->mdev.bus_info),
+		 "platform:%s", VIMC_PDEV_NAME);
 	vimc->mdev.dev = &pdev->dev;
 	media_device_init(&vimc->mdev);
 
