@@ -2552,10 +2552,10 @@ static void signal_delivered(struct ksignal *ksig, int stepping)
 
 void signal_setup_done(int failed, struct ksignal *ksig, int stepping)
 {
-	if (failed)
-		force_sigsegv(ksig->sig, current);
-	else
+	if (!failed)
 		signal_delivered(ksig, stepping);
+	else if (!fatal_signal_pending(current))
+		force_sigsegv(ksig->sig, current);
 }
 
 /*
