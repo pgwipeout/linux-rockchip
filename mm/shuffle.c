@@ -9,8 +9,8 @@
 #include "internal.h"
 #include "shuffle.h"
 
-DEFINE_STATIC_KEY_FALSE(page_alloc_shuffle_key);
-static unsigned long shuffle_state __ro_after_init;
+DEFINE_STATIC_KEY_TRUE(page_alloc_shuffle_key);
+static unsigned long shuffle_state __ro_after_init = 1 << SHUFFLE_ENABLE;
 
 /*
  * Depending on the architecture, module parameter parsing may run
