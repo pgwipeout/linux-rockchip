@@ -66,15 +66,25 @@ static int rpm_suspend(struct device *dev, int rpmflags);
  */
 void update_pm_runtime_accounting(struct device *dev)
 {
-	u64 now = ktime_to_ns(ktime_get());
-	u64 delta;
-
-	delta = now - dev->power.accounting_timestamp;
-
-	dev->power.accounting_timestamp = now;
+	u64 now, last, delta;
 
 	if (dev->power.disable_depth > 0)
 		return;
+
+	last = dev->power.accounting_timestamp;
+
+	now = ktime_get_mono_fast_ns();
+	dev->power.accounting_timestamp = now;
+
+	/*
+	 * Because ktime_get_mono_fast_ns() is not monotonic during
+	 * timekeeping updates, ensure that 'now' is after the last saved
+	 * timesptamp.
+	 */
+	if (now < last)
+		return;
+
+	delta = now - last;
 
 	if (dev->power.runtime_status == RPM_SUSPENDED)
 		dev->power.suspended_time += delta;
@@ -1289,6 +1299,9 @@ void __pm_runtime_disable(struct device *dev, bool check_resume)
 		pm_runtime_put_noidle(dev);
 	}
 
+	/* Update time accounting before disabling PM-runtime. */
+	update_pm_runtime_accounting(dev);
+
 	if (!dev->power.disable_depth++)
 		__pm_runtime_barrier(dev);
 
@@ -1312,7 +1325,7 @@ void pm_runtime_enable(struct device *dev)
 
 		/* About to enable runtime pm, set accounting_timestamp to now */
 		if (!dev->power.disable_depth)
-			dev->power.accounting_timestamp = ktime_to_ns(ktime_get());
+			dev->power.accounting_timestamp = ktime_get_mono_fast_ns();
 	} else {
 		dev_warn(dev, "Unbalanced %s!\n", __func__);
 	}
@@ -1512,7 +1525,6 @@ void pm_runtime_init(struct device *dev)
 	dev->power.request_pending = false;
 	dev->power.request = RPM_REQ_NONE;
 	dev->power.deferred_resume = false;
-	dev->power.accounting_timestamp = 0;
 	INIT_WORK(&dev->power.work, pm_runtime_work);
 
 	dev->power.timer_expires = 0;
