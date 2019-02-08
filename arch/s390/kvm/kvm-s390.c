@@ -432,11 +432,18 @@ int kvm_arch_init(void *opaque)
 	/* Register floating interrupt controller interface. */
 	rc = kvm_register_device_ops(&kvm_flic_ops, KVM_DEV_TYPE_FLIC);
 	if (rc) {
-		pr_err("Failed to register FLIC rc=%d\n", rc);
+		pr_err("A FLIC registration call failed with rc=%d\n", rc);
 		goto out_debug_unreg;
 	}
+
+	rc = kvm_s390_gib_init(GAL_ISC);
+	if (rc)
+		goto out_gib_destroy;
+
 	return 0;
 
+out_gib_destroy:
+	kvm_s390_gib_destroy();
 out_debug_unreg:
 	debug_unregister(kvm_s390_dbf);
 	return rc;
@@ -444,6 +451,7 @@ out_debug_unreg:
 
 void kvm_arch_exit(void)
 {
+	kvm_s390_gib_destroy();
 	debug_unregister(kvm_s390_dbf);
 }
 
@@ -2209,6 +2217,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	if (!kvm->arch.sie_page2)
 		goto out_err;
 
+	kvm->arch.sie_page2->kvm = kvm;
 	kvm->arch.model.fac_list = kvm->arch.sie_page2->fac_list;
 
 	for (i = 0; i < kvm_s390_fac_size(); i++) {
@@ -2812,7 +2821,7 @@ struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm,
 
 	vcpu->arch.sie_block->icpua = id;
 	spin_lock_init(&vcpu->arch.local_int.lock);
-	vcpu->arch.sie_block->gd = (u32)(u64)kvm->arch.gisa;
+	vcpu->arch.sie_block->gd = (u32)(u64)kvm->arch.gisa_int.origin;
 	if (vcpu->arch.sie_block->gd && sclp.has_gisaf)
 		vcpu->arch.sie_block->gd |= GISA_FORMAT1;
 	seqcount_init(&vcpu->arch.cputm_seqcount);
@@ -3457,6 +3466,8 @@ static int vcpu_pre_run(struct kvm_vcpu *vcpu)
 		kvm_s390_backup_guest_per_regs(vcpu);
 		kvm_s390_patch_guest_per_regs(vcpu);
 	}
+
+	clear_bit(vcpu->vcpu_id, vcpu->kvm->arch.gisa_int.kicked_mask);
 
 	vcpu->arch.sie_block->icptcode = 0;
 	cpuflags = atomic_read(&vcpu->arch.sie_block->cpuflags);
@@ -4293,12 +4304,12 @@ static int __init kvm_s390_init(void)
 	int i;
 
 	if (!sclp.has_sief2) {
-		pr_info("SIE not available\n");
+		pr_info("SIE is not available\n");
 		return -ENODEV;
 	}
 
 	if (nested && hpage) {
-		pr_info("nested (vSIE) and hpage (huge page backing) can currently not be activated concurrently");
+		pr_info("A KVM host that supports nesting cannot back its KVM guests with huge pages\n");
 		return -EINVAL;
 	}
 
