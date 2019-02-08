@@ -210,13 +210,6 @@ static int rxe_dealloc_pd(struct ib_pd *ibpd)
 	return 0;
 }
 
-static void rxe_init_av(struct rxe_dev *rxe, struct rdma_ah_attr *attr,
-			struct rxe_av *av)
-{
-	rxe_av_from_attr(rdma_ah_get_port_num(attr), av, attr);
-	rxe_av_fill_ip_info(av, attr);
-}
-
 static struct ib_ah *rxe_create_ah(struct ib_pd *ibpd,
 				   struct rdma_ah_attr *attr,
 				   u32 flags,
@@ -239,7 +232,7 @@ static struct ib_ah *rxe_create_ah(struct ib_pd *ibpd,
 	rxe_add_ref(pd);
 	ah->pd = pd;
 
-	rxe_init_av(rxe, attr, &ah->av);
+	rxe_init_av(attr, &ah->av);
 	return &ah->ibah;
 }
 
@@ -253,7 +246,7 @@ static int rxe_modify_ah(struct ib_ah *ibah, struct rdma_ah_attr *attr)
 	if (err)
 		return err;
 
-	rxe_init_av(rxe, attr, &ah->av);
+	rxe_init_av(attr, &ah->av);
 	return 0;
 }
 
@@ -1129,8 +1122,8 @@ static int rxe_detach_mcast(struct ib_qp *ibqp, union ib_gid *mgid, u16 mlid)
 static ssize_t parent_show(struct device *device,
 			   struct device_attribute *attr, char *buf)
 {
-	struct rxe_dev *rxe = container_of(device, struct rxe_dev,
-					   ib_dev.dev);
+	struct rxe_dev *rxe =
+		rdma_device_to_drv_device(device, struct rxe_dev, ib_dev);
 
 	return snprintf(buf, 16, "%s\n", rxe_parent_name(rxe, 1));
 }
@@ -1258,7 +1251,7 @@ int rxe_register_device(struct rxe_dev *rxe)
 
 	rdma_set_device_sysfs_group(dev, &rxe_attr_group);
 	dev->driver_id = RDMA_DRIVER_RXE;
-	err = ib_register_device(dev, "rxe%d", NULL);
+	err = ib_register_device(dev, "rxe%d");
 	if (err) {
 		pr_warn("%s failed with error %d\n", __func__, err);
 		goto err1;
