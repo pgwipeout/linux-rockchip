@@ -108,6 +108,7 @@ static const struct pmc_bit_map spt_ltr_show_map[] = {
 	{"SATA",		SPT_PMC_LTR_SATA},
 	{"GIGABIT_ETHERNET",	SPT_PMC_LTR_GBE},
 	{"XHCI",		SPT_PMC_LTR_XHCI},
+	{"Reserved",		SPT_PMC_LTR_RESERVED},
 	{"ME",			SPT_PMC_LTR_ME},
 	/* EVA is Enterprise Value Add, doesn't really exist on PCH */
 	{"EVA",			SPT_PMC_LTR_EVA},
@@ -203,7 +204,7 @@ static const struct pmc_bit_map cnp_pfear_map[] = {
 	{"CNVI",                BIT(3)},
 	{"UFS0",                BIT(4)},
 	{"EMMC",                BIT(5)},
-	{"Res_6",               BIT(6)},
+	{"SPF",			BIT(6)},
 	{"SBR6",                BIT(7)},
 
 	{"SBR7",                BIT(0)},
@@ -276,6 +277,7 @@ static const struct pmc_bit_map cnp_ltr_show_map[] = {
 	{"SATA",		CNP_PMC_LTR_SATA},
 	{"GIGABIT_ETHERNET",	CNP_PMC_LTR_GBE},
 	{"XHCI",		CNP_PMC_LTR_XHCI},
+	{"Reserved",		CNP_PMC_LTR_RESERVED},
 	{"ME",			CNP_PMC_LTR_ME},
 	/* EVA is Enterprise Value Add, doesn't really exist on PCH */
 	{"EVA",			CNP_PMC_LTR_EVA},
@@ -380,7 +382,8 @@ static int pmc_core_ppfear_show(struct seq_file *s, void *unused)
 	     index < PPFEAR_MAX_NUM_ENTRIES; index++, iter++)
 		pf_regs[index] = pmc_core_reg_read_byte(pmcdev, iter);
 
-	for (index = 0; map[index].name; index++)
+	for (index = 0; map[index].name &&
+	     index < pmcdev->map->ppfear_buckets * 8; index++)
 		pmc_core_display_map(s, index, pf_regs[index / 8], map);
 
 	return 0;
@@ -701,7 +704,7 @@ static int pmc_core_dbgfs_register(struct pmc_dev *pmcdev)
 	debugfs_create_file("ltr_ignore", 0644, dir, pmcdev,
 			    &pmc_core_ltr_ignore_ops);
 
-	debugfs_create_file("ltr_show", 0644, dir, pmcdev, &pmc_core_ltr_fops);
+	debugfs_create_file("ltr_show", 0444, dir, pmcdev, &pmc_core_ltr_fops);
 
 	if (pmcdev->map->pll_sts)
 		debugfs_create_file("pll_status", 0444, dir, pmcdev,
@@ -768,7 +771,7 @@ static int __init pmc_core_probe(void)
 	 * Sunrisepoint PCH regmap can't be used. Use Cannonlake PCH regmap
 	 * in this case.
 	 */
-	if (!pci_dev_present(pmc_pci_ids))
+	if (pmcdev->map == &spt_reg_map && !pci_dev_present(pmc_pci_ids))
 		pmcdev->map = &cnp_reg_map;
 
 	if (lpit_read_residency_count_address(&slp_s0_addr))
