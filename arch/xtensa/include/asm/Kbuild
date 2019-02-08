@@ -27,6 +27,7 @@ generic-y += qrwlock.h
 generic-y += qspinlock.h
 generic-y += rwsem.h
 generic-y += sections.h
+generic-y += socket.h
 generic-y += topology.h
 generic-y += trace_clock.h
 generic-y += vga.h
