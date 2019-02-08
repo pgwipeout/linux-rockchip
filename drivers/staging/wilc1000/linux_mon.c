@@ -18,28 +18,23 @@ struct wilc_wfi_radiotap_cb_hdr {
 	u16 tx_flags;
 } __packed;
 
-static struct net_device *wilc_wfi_mon; /* global monitor netdev */
-
 static u8 srcadd[6];
 static u8 bssid[6];
-
-#define IEEE80211_RADIOTAP_F_TX_RTS	0x0004  /* used rts/cts handshake */
-#define IEEE80211_RADIOTAP_F_TX_FAIL	0x0001  /* failed due to excessive*/
 
 #define TX_RADIOTAP_PRESENT ((1 << IEEE80211_RADIOTAP_RATE) |	\
 			     (1 << IEEE80211_RADIOTAP_TX_FLAGS))
 
-void wilc_wfi_monitor_rx(u8 *buff, u32 size)
+void wilc_wfi_monitor_rx(struct net_device *mon_dev, u8 *buff, u32 size)
 {
 	u32 header, pkt_offset;
 	struct sk_buff *skb = NULL;
 	struct wilc_wfi_radiotap_hdr *hdr;
 	struct wilc_wfi_radiotap_cb_hdr *cb_hdr;
 
-	if (!wilc_wfi_mon)
+	if (!mon_dev)
 		return;
 
-	if (!netif_running(wilc_wfi_mon))
+	if (!netif_running(mon_dev))
 		return;
 
 	/* Get WILC header */
@@ -94,7 +89,7 @@ void wilc_wfi_monitor_rx(u8 *buff, u32 size)
 		hdr->rate = 5;
 	}
 
-	skb->dev = wilc_wfi_mon;
+	skb->dev = mon_dev;
 	skb_reset_mac_header(skb);
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 	skb->pkt_type = PACKET_OTHERHOST;
@@ -156,12 +151,10 @@ static netdev_tx_t wilc_wfi_mon_xmit(struct sk_buff *skb,
 	struct sk_buff *skb2;
 	struct wilc_wfi_radiotap_cb_hdr *cb_hdr;
 
-	if (!wilc_wfi_mon)
-		return -EFAULT;
-
-	mon_priv = netdev_priv(wilc_wfi_mon);
+	mon_priv = netdev_priv(dev);
 	if (!mon_priv)
 		return -EFAULT;
+
 	rtap_len = ieee80211_get_radiotap_len(skb->data);
 	if (skb->len < rtap_len)
 		return -1;
@@ -187,7 +180,7 @@ static netdev_tx_t wilc_wfi_mon_xmit(struct sk_buff *skb,
 		cb_hdr->rate = 5;
 		cb_hdr->tx_flags = 0x0004;
 
-		skb2->dev = wilc_wfi_mon;
+		skb2->dev = dev;
 		skb_reset_mac_header(skb2);
 		skb2->ip_summed = CHECKSUM_UNNECESSARY;
 		skb2->pkt_type = PACKET_OTHERHOST;
@@ -223,51 +216,44 @@ static const struct net_device_ops wilc_wfi_netdev_ops = {
 
 };
 
-struct net_device *wilc_wfi_init_mon_interface(const char *name,
+struct net_device *wilc_wfi_init_mon_interface(struct wilc *wl,
+					       const char *name,
 					       struct net_device *real_dev)
 {
 	struct wilc_wfi_mon_priv *priv;
 
 	/*If monitor interface is already initialized, return it*/
-	if (wilc_wfi_mon)
-		return wilc_wfi_mon;
+	if (wl->monitor_dev)
+		return wl->monitor_dev;
 
-	wilc_wfi_mon = alloc_etherdev(sizeof(struct wilc_wfi_mon_priv));
-	if (!wilc_wfi_mon)
+	wl->monitor_dev = alloc_etherdev(sizeof(struct wilc_wfi_mon_priv));
+	if (!wl->monitor_dev)
 		return NULL;
-	wilc_wfi_mon->type = ARPHRD_IEEE80211_RADIOTAP;
-	strncpy(wilc_wfi_mon->name, name, IFNAMSIZ);
-	wilc_wfi_mon->name[IFNAMSIZ - 1] = 0;
-	wilc_wfi_mon->netdev_ops = &wilc_wfi_netdev_ops;
 
-	if (register_netdevice(wilc_wfi_mon)) {
+	wl->monitor_dev->type = ARPHRD_IEEE80211_RADIOTAP;
+	strncpy(wl->monitor_dev->name, name, IFNAMSIZ);
+	wl->monitor_dev->name[IFNAMSIZ - 1] = 0;
+	wl->monitor_dev->netdev_ops = &wilc_wfi_netdev_ops;
+
+	if (register_netdevice(wl->monitor_dev)) {
 		netdev_err(real_dev, "register_netdevice failed\n");
 		return NULL;
 	}
-	priv = netdev_priv(wilc_wfi_mon);
+	priv = netdev_priv(wl->monitor_dev);
 	if (!priv)
 		return NULL;
 
 	priv->real_ndev = real_dev;
 
-	return wilc_wfi_mon;
+	return wl->monitor_dev;
 }
 
-void wilc_wfi_deinit_mon_interface(void)
+void wilc_wfi_deinit_mon_interface(struct wilc *wl)
 {
-	bool rollback_lock = false;
+	if (!wl->monitor_dev)
+		return;
 
-	if (wilc_wfi_mon) {
-		if (rtnl_is_locked()) {
-			rtnl_unlock();
-			rollback_lock = true;
-		}
-		unregister_netdev(wilc_wfi_mon);
-
-		if (rollback_lock) {
-			rtnl_lock();
-			rollback_lock = false;
-		}
-		wilc_wfi_mon = NULL;
-	}
+	unregister_netdev(wl->monitor_dev);
+	free_netdev(wl->monitor_dev);
+	wl->monitor_dev = NULL;
 }

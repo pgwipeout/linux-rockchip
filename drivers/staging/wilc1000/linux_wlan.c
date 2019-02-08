@@ -19,9 +19,7 @@ static int dev_state_ev_handler(struct notifier_block *this,
 	struct wilc_priv *priv;
 	struct host_if_drv *hif_drv;
 	struct net_device *dev;
-	u8 *ip_addr_buf;
 	struct wilc_vif *vif;
-	u8 null_ip[4] = {0};
 	char wlan_dev_name[5] = "wlan0";
 
 	if (!dev_iface || !dev_iface->ifa_dev || !dev_iface->ifa_dev->dev)
@@ -56,13 +54,6 @@ static int dev_state_ev_handler(struct notifier_block *this,
 		if (vif->wilc->enable_ps)
 			wilc_set_power_mgmt(vif, 1, 0);
 
-		netdev_dbg(dev, "[%s] Up IP\n", dev_iface->ifa_label);
-
-		ip_addr_buf = (char *)&dev_iface->ifa_address;
-		netdev_dbg(dev, "IP add=%d:%d:%d:%d\n",
-			   ip_addr_buf[0], ip_addr_buf[1],
-			   ip_addr_buf[2], ip_addr_buf[3]);
-
 		break;
 
 	case NETDEV_DOWN:
@@ -76,13 +67,6 @@ static int dev_state_ev_handler(struct notifier_block *this,
 			wilc_set_power_mgmt(vif, 0, 0);
 
 		wilc_resolve_disconnect_aberration(vif);
-
-		netdev_dbg(dev, "[%s] Down IP\n", dev_iface->ifa_label);
-
-		ip_addr_buf = null_ip;
-		netdev_dbg(dev, "IP add=%d:%d:%d:%d\n",
-			   ip_addr_buf[0], ip_addr_buf[1],
-			   ip_addr_buf[2], ip_addr_buf[3]);
 
 		break;
 
@@ -198,7 +182,11 @@ void wilc_wlan_set_bssid(struct net_device *wilc_netdev, u8 *bssid, u8 mode)
 {
 	struct wilc_vif *vif = netdev_priv(wilc_netdev);
 
-	memcpy(vif->bssid, bssid, 6);
+	if (bssid)
+		ether_addr_copy(vif->bssid, bssid);
+	else
+		eth_zero_addr(vif->bssid);
+
 	vif->mode = mode;
 }
 
@@ -807,12 +795,12 @@ static void wilc_set_multicast_list(struct net_device *dev)
 
 	if (dev->flags & IFF_ALLMULTI ||
 	    dev->mc.count > WILC_MULTICAST_TABLE_SIZE) {
-		wilc_setup_multicast_filter(vif, false, 0, NULL);
+		wilc_setup_multicast_filter(vif, 0, 0, NULL);
 		return;
 	}
 
 	if (dev->mc.count == 0) {
-		wilc_setup_multicast_filter(vif, true, 0, NULL);
+		wilc_setup_multicast_filter(vif, 1, 0, NULL);
 		return;
 	}
 
@@ -829,7 +817,7 @@ static void wilc_set_multicast_list(struct net_device *dev)
 		cur_mc += ETH_ALEN;
 	}
 
-	if (wilc_setup_multicast_filter(vif, true, dev->mc.count, mc_list))
+	if (wilc_setup_multicast_filter(vif, 1, dev->mc.count, mc_list))
 		kfree(mc_list);
 }
 
@@ -847,9 +835,6 @@ netdev_tx_t wilc_mac_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct wilc *wilc = vif->wilc;
 	struct tx_complete_data *tx_data = NULL;
 	int queue_count;
-	char *udp_buf;
-	struct iphdr *ih;
-	struct ethhdr *eth_h;
 
 	if (skb->dev != ndev) {
 		netdev_err(ndev, "Packet not destined to this device\n");
@@ -866,18 +851,6 @@ netdev_tx_t wilc_mac_xmit(struct sk_buff *skb, struct net_device *ndev)
 	tx_data->buff = skb->data;
 	tx_data->size = skb->len;
 	tx_data->skb  = skb;
-
-	eth_h = (struct ethhdr *)(skb->data);
-	if (eth_h->h_proto == cpu_to_be16(0x8e88))
-		netdev_dbg(ndev, "EAPOL transmitted\n");
-
-	ih = (struct iphdr *)(skb->data + sizeof(struct ethhdr));
-
-	udp_buf = (char *)ih + sizeof(struct iphdr);
-	if ((udp_buf[1] == 68 && udp_buf[3] == 67) ||
-	    (udp_buf[1] == 67 && udp_buf[3] == 68))
-		netdev_dbg(ndev, "DHCP Message transmitted, type:%x %x %x\n",
-			   udp_buf[248], udp_buf[249], udp_buf[250]);
 
 	vif->netstats.tx_packets++;
 	vif->netstats.tx_bytes += tx_data->size;
@@ -916,7 +889,6 @@ static int wilc_mac_close(struct net_device *ndev)
 		netdev_dbg(ndev, "Deinitializing wilc1000\n");
 		wl->close = 1;
 		wilc_wlan_deinitialize(ndev);
-		wilc_wfi_deinit_mon_interface();
 	}
 
 	vif->mac_opened = 0;
@@ -972,7 +944,7 @@ void wilc_wfi_mgmt_rx(struct wilc *wilc, u8 *buff, u32 size)
 	for (i = 0; i < wilc->vif_num; i++) {
 		vif = netdev_priv(wilc->vif[i]->ndev);
 		if (vif->monitor_flag) {
-			wilc_wfi_monitor_rx(buff, size);
+			wilc_wfi_monitor_rx(wilc->monitor_dev, buff, size);
 			return;
 		}
 	}
@@ -1002,19 +974,15 @@ void wilc_netdev_cleanup(struct wilc *wilc)
 		wilc->firmware = NULL;
 	}
 
-	if (wilc->vif[0]->ndev || wilc->vif[1]->ndev) {
-		for (i = 0; i < WILC_NUM_CONCURRENT_IFC; i++)
-			if (wilc->vif[i]->ndev)
-				if (wilc->vif[i]->mac_opened)
-					wilc_mac_close(wilc->vif[i]->ndev);
-
-		for (i = 0; i < WILC_NUM_CONCURRENT_IFC; i++) {
+	for (i = 0; i < WILC_NUM_CONCURRENT_IFC; i++) {
+		if (wilc->vif[i] && wilc->vif[i]->ndev) {
 			unregister_netdev(wilc->vif[i]->ndev);
 			wilc_free_wiphy(wilc->vif[i]->ndev);
 			free_netdev(wilc->vif[i]->ndev);
 		}
 	}
 
+	wilc_wfi_deinit_mon_interface(wilc);
 	flush_workqueue(wilc->hif_workqueue);
 	destroy_workqueue(wilc->hif_workqueue);
 	wilc_wlan_cfg_deinit(wilc);
