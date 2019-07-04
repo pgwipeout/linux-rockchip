@@ -125,6 +125,8 @@ arm/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.3-rockchip-dts32-2
 	rockchip/dt64-2
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v5.3-rockchip-dts64-2
+	sunxi/dt64-2
+		https://git.kernel.org/pub/scm/linux/kernel/git/sunxi/linux tags/sunxi-dt64-for-5.3-round-2
 
 arm/drivers
 	fsl/soc
@@ -159,6 +161,10 @@ arm/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-drivers-5.3
 	patch
 		soc: rockchip: work around clang warning
+	reset/fixes
+		git://git.pengutronix.de/git/pza/linux tags/reset-fixes-for-v5.2
+	reset/devel
+		git://git.pengutronix.de/git/pza/linux tags/reset-for-v5.3
 
 arm/defconfig
 	patch
