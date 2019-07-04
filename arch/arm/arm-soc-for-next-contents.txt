@@ -157,6 +157,8 @@ arm/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/joel/aspeed tags/aspeed-5.3-soc
 	imx/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-drivers-5.3
+	patch
+		soc: rockchip: work around clang warning
 
 arm/defconfig
 	patch
@@ -196,4 +198,8 @@ arm/late
 arm/fixes
 	<no branch> (80031361747aec92163464f2ee08870fec33bcb0)
 		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-5.2-2
+	patch
+		soc: ti: fix irq-ti-sci link error
+	<no branch> (4f2fe646770774d02d52a514849c181c9e0970f6)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-fixes-for-v5.2-part2
 
