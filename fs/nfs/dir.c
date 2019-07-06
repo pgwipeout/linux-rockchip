@@ -650,12 +650,12 @@ void nfs_readdir_rapages_init(nfs_readdir_descriptor_t *desc)
 static
 int nfs_readdir_xdr_to_array(nfs_readdir_descriptor_t *desc, struct page *page, struct inode *inode)
 {
-	struct page *pages[NFS_MAX_READDIR_PAGES];
+	const unsigned int array_size = NFS_MAX_READDIR_PAGES;
+	struct page **pages;
 	struct nfs_entry entry;
 	struct file	*file = desc->file;
 	struct nfs_cache_array *array;
 	int status = -ENOMEM;
-	unsigned int array_size = ARRAY_SIZE(pages);
 
 	/*
 	 * This means we hit readdir rdpages miss, the preallocated rdpages
@@ -678,12 +678,17 @@ int nfs_readdir_xdr_to_array(nfs_readdir_descriptor_t *desc, struct page *page, 
 		goto out;
 	}
 
-	array = kmap(page);
-	memset(array, 0, sizeof(struct nfs_cache_array));
+	pages = kmalloc_array(array_size, sizeof(*pages), GFP_KERNEL);
+	if (!pages)
+		goto out_release_array;
 
 	status = nfs_readdir_alloc_pages(pages, array_size);
 	if (status < 0)
 		goto out_release_array;
+
+	array = kmap(page);
+	memset(array, 0, sizeof(struct nfs_cache_array));
+
 	do {
 		unsigned int pglen;
 		status = nfs_readdir_xdr_filler(pages, desc, &entry, file, inode);
@@ -699,9 +704,10 @@ int nfs_readdir_xdr_to_array(nfs_readdir_descriptor_t *desc, struct page *page, 
 		}
 	} while (!array->eof);
 
+	kunmap(page);
 	nfs_readdir_free_pages(pages, array_size);
 out_release_array:
-	kunmap(page);
+	kfree(pages);
 	nfs4_label_free(entry.label);
 out:
 	nfs_free_fattr(entry.fattr);
@@ -900,10 +906,9 @@ static int nfs_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct dentry	*dentry = file_dentry(file);
 	struct inode	*inode = d_inode(dentry);
-	nfs_readdir_descriptor_t my_desc,
-			*desc = &my_desc;
 	struct nfs_open_dir_context *dir_ctx = file->private_data;
-	int res = 0;
+	nfs_readdir_descriptor_t *desc;
+	int res = -ENOMEM;
 	unsigned int max_rapages = NFS_MAX_READDIR_RAPAGES;
 
 	dfprintk(FILE, "NFS: readdir(%pD2) starting at cookie %llu\n",
@@ -916,7 +921,9 @@ static int nfs_readdir(struct file *file, struct dir_context *ctx)
 	 * to either find the entry with the appropriate number or
 	 * revalidate the cookie.
 	 */
-	memset(desc, 0, sizeof(*desc));
+	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
+	if (!desc)
+		goto free_desc;
 
 	desc->file = file;
 	desc->ctx = ctx;
@@ -926,7 +933,7 @@ static int nfs_readdir(struct file *file, struct dir_context *ctx)
 
 	res = nfs_readdir_alloc_pages(desc->pvec.pages, max_rapages);
 	if (res < 0)
-		return -ENOMEM;
+		goto free_desc;
 
 	nfs_readdir_rapages_init(desc);
 
@@ -968,6 +975,8 @@ out:
 	nfs_readdir_free_pages(desc->pvec.pages, max_rapages);
 	if (res > 0)
 		res = 0;
+free_desc:
+	kfree(desc);
 	dfprintk(FILE, "NFS: readdir(%pD2) returns %d\n", file, res);
 	return res;
 }
