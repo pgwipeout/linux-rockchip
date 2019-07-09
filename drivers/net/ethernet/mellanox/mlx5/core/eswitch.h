@@ -175,6 +175,8 @@ struct mlx5_esw_offload {
 	struct mutex peer_mutex;
 	DECLARE_HASHTABLE(encap_tbl, 8);
 	DECLARE_HASHTABLE(mod_hdr_tbl, 8);
+	DECLARE_HASHTABLE(termtbl_tbl, 8);
+	struct mutex termtbl_mutex; /* protects termtbl hash */
 	const struct mlx5_eswitch_rep_ops *rep_ops[NUM_REP_TYPES];
 	u8 inline_mode;
 	u64 num_flows;
@@ -283,6 +285,25 @@ int mlx5_eswitch_query_esw_vport_context(struct mlx5_eswitch *esw, u16 vport,
 
 struct mlx5_flow_spec;
 struct mlx5_esw_flow_attr;
+struct mlx5_termtbl_handle;
+
+bool
+mlx5_eswitch_termtbl_required(struct mlx5_eswitch *esw,
+			      struct mlx5_flow_act *flow_act,
+			      struct mlx5_flow_spec *spec);
+
+struct mlx5_flow_handle *
+mlx5_eswitch_add_termtbl_rule(struct mlx5_eswitch *esw,
+			      struct mlx5_flow_table *ft,
+			      struct mlx5_flow_spec *spec,
+			      struct mlx5_esw_flow_attr *attr,
+			      struct mlx5_flow_act *flow_act,
+			      struct mlx5_flow_destination *dest,
+			      int num_dest);
+
+void
+mlx5_eswitch_termtbl_put(struct mlx5_eswitch *esw,
+			 struct mlx5_termtbl_handle *tt);
 
 struct mlx5_flow_handle *
 mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
@@ -353,6 +374,7 @@ struct mlx5_esw_flow_attr {
 		struct mlx5_eswitch_rep *rep;
 		struct mlx5_core_dev *mdev;
 		u32 encap_id;
+		struct mlx5_termtbl_handle *termtbl;
 	} dests[MLX5_MAX_FLOW_FWD_VPORTS];
 	u32	mod_hdr_id;
 	u8	match_level;

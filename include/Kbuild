@@ -900,6 +900,7 @@ header-test-			+= net/netfilter/nf_tables_core.h
 header-test-			+= net/netfilter/nf_tables_ipv4.h
 header-test-			+= net/netfilter/nf_tables_ipv6.h
 header-test-			+= net/netfilter/nft_fib.h
+header-test-			+= net/netfilter/nft_meta.h
 header-test-			+= net/netfilter/nft_reject.h
 header-test-			+= net/netns/can.h
 header-test-			+= net/netns/generic.h
