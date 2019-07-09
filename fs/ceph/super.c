@@ -868,12 +868,7 @@ static int ceph_real_mount(struct fs_context *fc, struct ceph_fs_client *fsc)
 			dout("mount opening path %s\n", path);
 		}
 
-		err = ceph_fs_debugfs_init(fsc);
-		if (err < 0) {
-			errorf(fc, "ceph: Can't create debugfs entries: %d",
-			       err);
-			goto out;
-		}
+		ceph_fs_debugfs_init(fsc);
 
 		root = open_root_dentry(fsc, path, started);
 		if (IS_ERR(root)) {
