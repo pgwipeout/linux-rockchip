@@ -3930,7 +3930,7 @@ static void wake_lock_waiters(struct rbd_device *rbd_dev, int result)
 	struct rbd_img_request *img_req;
 
 	dout("%s rbd_dev %p result %d\n", __func__, rbd_dev, result);
-	lockdep_assert_held_exclusive(&rbd_dev->lock_rwsem);
+	lockdep_assert_held_write(&rbd_dev->lock_rwsem);
 
 	cancel_delayed_work(&rbd_dev->lock_dwork);
 	if (!completion_done(&rbd_dev->acquire_wait)) {
@@ -4209,7 +4209,7 @@ static bool rbd_quiesce_lock(struct rbd_device *rbd_dev)
 	bool need_wait;
 
 	dout("%s rbd_dev %p\n", __func__, rbd_dev);
-	lockdep_assert_held_exclusive(&rbd_dev->lock_rwsem);
+	lockdep_assert_held_write(&rbd_dev->lock_rwsem);
 
 	if (rbd_dev->lock_state != RBD_LOCK_STATE_LOCKED)
 		return false;
