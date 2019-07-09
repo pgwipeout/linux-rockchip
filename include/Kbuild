@@ -939,6 +939,7 @@ header-test-			+= rdma/ib.h
 header-test-			+= rdma/iw_portmap.h
 header-test-			+= rdma/opa_port_info.h
 header-test-			+= rdma/rdmavt_cq.h
+header-test-			+= rdma/rdma_counter.h
 header-test-			+= rdma/restrack.h
 header-test-			+= rdma/signature.h
 header-test-			+= rdma/tid_rdma_defs.h
